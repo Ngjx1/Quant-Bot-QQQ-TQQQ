@@ -2,9 +2,9 @@ name: Quant-Bot-QQQ-TQQQ
 
 on:
   schedule:
-    # Runs at 16:15 UTC (12:15 AM Malaysia/Beijing Time) Monday-Friday
-    - cron: '15 16 * * 1-5'
-  workflow_dispatch: # Allows you to click a button to run it manually
+    # Runs at 14:00 UTC (10:00 PM Malaysia/Beijing Time) Monday-Friday
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch: 
 
 jobs:
   run-strategy:
@@ -24,6 +24,10 @@ jobs:
       - name: Execute Strategy
         run: python strategy.py
         env:
-          # Optional: It will use these if they exist, otherwise defaults to the hardcoded ones in the script
+          # Secrets (Hidden)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Variables (Visible and easily editable by you)
+          ACCOUNT_EQUITY: ${{ vars.ACCOUNT_EQUITY }}
+          HOLDING_QQQ: ${{ vars.HOLDING_QQQ }}
+          HOLDING_TQQQ: ${{ vars.HOLDING_TQQQ }}
