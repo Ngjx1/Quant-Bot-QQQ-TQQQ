@@ -21,8 +21,9 @@ class QuantStrategy:
         
         # Account Balance & Holdings (Reads dynamically from GitHub Variables)
         self.equity = float(os.environ.get("ACCOUNT_EQUITY", "600.0"))
-        self.qty_q = int(os.environ.get("HOLDING_QQQ", "0"))
-        self.qty_t = int(os.environ.get("HOLDING_TQQQ", "0"))
+        # Changed int() to float() to support fractional inputs like "2.27"
+        self.qty_q = float(os.environ.get("HOLDING_QQQ", "0.0"))
+        self.qty_t = float(os.environ.get("HOLDING_TQQQ", "0.0"))
 
         # Telegram Setup (Reads from GitHub Secrets, falls back to your provided keys for testing)
         self.bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "8845865365:AAFd76bQzxBJDKMgMlrKb44pmVRUBb99QlE")
@@ -55,11 +56,11 @@ class QuantStrategy:
         val_t = float(self.qty_t) * close_t
         cash = self.equity - val_q - val_t
         
-        # 2. Target Shares Calculation
-        target_qty_q = int((self.equity * tg_q) / close_q) if close_q > 0 else 0
-        target_qty_t = int((self.equity * tg_t) / close_t) if close_t > 0 else 0
+        # 2. 计算目标持仓股数 (Calculate target shares with 4 decimal places)
+        target_qty_q = round((self.equity * tg_q) / close_q, 4) if close_q > 0 else 0.0
+        target_qty_t = round((self.equity * tg_t) / close_t, 4) if close_t > 0 else 0.0
 
-        # 3. Status Emoji
+        # 3. 匹配当前状态的 Emoji 图标 (Match status with Emoji)
         status_icons = {
             "NORMAL": "🟢",
             "ZONE_BATTLE_ATTACK": "⚔️",
@@ -71,9 +72,9 @@ class QuantStrategy:
         }
         icon = status_icons.get(self.state_label, "🔹")
 
-        # 4. Action Text Generator
+        # 4. 生成操作建议文本 (Generate action suggestions handling decimals)
         def get_action_str(current, target):
-            diff = target - current
+            diff = round(target - current, 4)
             if diff > 0:
                 return f"🟢 买入 {diff} 股 (目标: {target}股)"
             elif diff < 0:
