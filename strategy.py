@@ -19,10 +19,10 @@ class QuantStrategy:
         self.risk_off_days = 0
         self.min_risk_off_days = 2
         
-        # Paper Trading Account (Since GitHub Actions can't read Moomoo balance directly)
-        self.equity = 600.0  # Starting capital
-        self.qty_q = 0       # Current holding QQQ
-        self.qty_t = 0       # Current holding TQQQ
+        # Account Balance & Holdings (Reads dynamically from GitHub Variables)
+        self.equity = float(os.environ.get("ACCOUNT_EQUITY", "600.0"))
+        self.qty_q = int(os.environ.get("HOLDING_QQQ", "0"))
+        self.qty_t = int(os.environ.get("HOLDING_TQQQ", "0"))
 
         # Telegram Setup (Reads from GitHub Secrets, falls back to your provided keys for testing)
         self.bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "8845865365:AAFd76bQzxBJDKMgMlrKb44pmVRUBb99QlE")
