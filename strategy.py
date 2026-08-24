@@ -2,52 +2,35 @@ import yfinance as yf
 import pandas as pd
 import requests
 import datetime
-import os  # <-- We need this to read GitHub Secrets
-
-# --- Configuration ---
-# Now it dynamically reads the secrets you saved in GitHub
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8845865365:AAFd76bQzxBJDKMgMlrKb44pmVRUBb99QlE")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8578262364")
-
-def alert(title, content):
-    """Sends a Telegram notification."""
-    # Safety check: don't crash if secrets are missing
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print(f"[LOCAL ALERT] {title} - {content}")
-        return
-
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    message = f"🚨 *{title}*\n\n{content}"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    try:
-        requests.post(url, json=payload)
-        print(f"[ALERT SENT] {title}")
-    except Exception as e:
-        print(f"[ALERT FAILED] {e}")
+import os
 
 class QuantStrategy:
     def __init__(self):
+        # Strategy Parameters
         self.ma_long_window = 200
         self.ma_short_window = 20
         self.vol_window = 60
         self.vol_factor = 2.0
         self.high_zone = 0.95
         
-        # State management (In a real bot, these should be saved to a database/file)
-        self.state_label = "INIT"
+        # State Management
+        self.state_label = "NORMAL"
         self.ath_price = 0.0
-        self.days_since_rebal = 0
         self.risk_off_days = 0
         self.min_risk_off_days = 2
         
-        self.pending_buy = False
-        self.pending_target_q = 0.0
-        self.pending_target_t = 0.0
+        # Paper Trading Account (Since GitHub Actions can't read Moomoo balance directly)
+        self.equity = 600.0  # Starting capital
+        self.qty_q = 0       # Current holding QQQ
+        self.qty_t = 0       # Current holding TQQQ
+
+        # Telegram Setup (Reads from GitHub Secrets, falls back to your provided keys for testing)
+        self.bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "8845865365:AAFd76bQzxBJDKMgMlrKb44pmVRUBb99QlE")
+        self.chat_id = os.environ.get("TELEGRAM_CHAT_ID", "8578262364")
 
     def fetch_data(self, ticker):
         """Fetches historical daily data using yfinance."""
         print(f"[DATA] Fetching data for {ticker}...")
-        # Use yf.Ticker().history() instead of yf.download() to prevent MultiIndex data structure errors
         ticker_obj = yf.Ticker(ticker)
         data = ticker_obj.history(period="2y", interval="1d")
         return data
@@ -61,19 +44,83 @@ class QuantStrategy:
 
     def _init_ath_price(self, data):
         recent_year = data.tail(252)
-        # Force the maximum value to be a standard Python float (decimal)
         self.ath_price = float(recent_year['High'].max())
         print(f"[INIT] ATH initialized: {self.ath_price:.2f}")
 
-    def run(self):
-        print("[INIT] Strategy V22.1 Started (yfinance + Telegram)")
-        alert("【Strategy Started】", "V22.1 Initialization complete. Fetching data...")
+    def send_daily_report(self, close_q, close_t, tg_q, tg_t):
+        """Generates and sends the exact HandsomeBoybot report"""
+        
+        # 1. Asset & Cash Calculation
+        val_q = float(self.qty_q) * close_q
+        val_t = float(self.qty_t) * close_t
+        cash = self.equity - val_q - val_t
+        
+        # 2. Target Shares Calculation
+        target_qty_q = int((self.equity * tg_q) / close_q) if close_q > 0 else 0
+        target_qty_t = int((self.equity * tg_t) / close_t) if close_t > 0 else 0
 
+        # 3. Status Emoji
+        status_icons = {
+            "NORMAL": "🟢",
+            "ZONE_BATTLE_ATTACK": "⚔️",
+            "ZONE_BATTLE_DEFEND": "🛡️",
+            "ZONE_DESPAIR_TQQQ": "🔥",
+            "TOP_ESCAPE": "🚨",
+            "BEAR_CASH": "🐻",
+            "INIT": "🔹"
+        }
+        icon = status_icons.get(self.state_label, "🔹")
+
+        # 4. Action Text Generator
+        def get_action_str(current, target):
+            diff = target - current
+            if diff > 0:
+                return f"🟢 买入 {diff} 股 (目标: {target}股)"
+            elif diff < 0:
+                return f"🔴 卖出 {abs(diff)} 股 (目标: {target}股)"
+            else:
+                return f"⚪️ 维持持仓 (目标: {target}股)"
+
+        action_q = get_action_str(self.qty_q, target_qty_q)
+        action_t = get_action_str(self.qty_t, target_qty_t)
+
+        # 5. Beijing Time Formatting (UTC+8)
+        tz = datetime.timezone(datetime.timedelta(hours=8))
+        now_str = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+
+        # 6. Final Message Assembly
+        msg = (
+            f"{icon} 【每日巡检】\n"
+            f"当前状态: {self.state_label}\n\n"
+            f"⏰ 报告时间(北京): {now_str}\n"
+            f"💰 账户总资产: ${round(self.equity, 2)}\n"
+            f"🏦 当前现金: ${round(cash, 2)}\n"
+            f"📈 QQQ: ${round(close_q, 2)} | TQQQ: ${round(close_t, 2)}\n\n"
+            f"🎯 操作建议:\n"
+            f"  • QQQ: {action_q}\n"
+            f"  • TQQQ: {action_t}"
+        )
+
+        # 7. Send to Telegram
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        try:
+            res = requests.post(url, json={"chat_id": self.chat_id, "text": msg})
+            if res.status_code == 200:
+                print("[REPORT SENT] 每日巡检已成功发送到 Telegram!")
+            else:
+                print(f"[REPORT FAILED] Telegram 拒绝发送: {res.text}")
+        except Exception as e:
+            print(f"[REPORT CRASH] {e}")
+
+    def run(self):
+        print("[INIT] V22.1 Engine Started")
+
+        # Fetch Data
         df_qqq = self.fetch_data("QQQ")
         df_tqqq = self.fetch_data("TQQQ")
 
         if df_qqq.empty or df_tqqq.empty:
-            alert("【Data Error】", "Failed to fetch data from yfinance.")
+            print("[ERROR] Failed to fetch data from yfinance.")
             return
 
         df_qqq = self.calculate_indicators(df_qqq)
@@ -81,30 +128,33 @@ class QuantStrategy:
         latest = df_qqq.iloc[-1]
         prev = df_qqq.iloc[-2]
         
-        close_qqq = latest['Close']
-        open_qqq = latest['Open']
-        vol_qqq = latest['Volume']
-        close_tqqq = df_tqqq.iloc[-1]['Close']
+        close_qqq = float(latest['Close'])
+        open_qqq = float(latest['Open'])
+        vol_qqq = float(latest['Volume'])
+        close_tqqq = float(df_tqqq.iloc[-1]['Close'])
         
         ma200 = latest['MA200']
         ma20 = latest['MA20']
         prev_ma20 = prev['MA20']
         vol_ma = latest['Vol_MA']
 
+        # Update ATH
         if self.ath_price == 0.0:
             self._init_ath_price(df_qqq)
 
         if close_qqq > self.ath_price:
-            self.ath_price = float(close_qqq)
+            self.ath_price = close_qqq
 
         drawdown = (close_qqq / self.ath_price) - 1.0 if self.ath_price > 0 else 0.0
 
+        # --- Top Signal Logic ---
         is_top_signal = False
         if close_qqq >= self.ath_price * self.high_zone:
             if not pd.isna(vol_ma) and vol_qqq > vol_ma * self.vol_factor:
                 if close_qqq < open_qqq:
                     is_top_signal = True
 
+        # --- State Machine Logic ---
         next_state = self.state_label
 
         if is_top_signal:
@@ -125,40 +175,49 @@ class QuantStrategy:
             else:
                 next_state = "NORMAL"
 
+        # --- Anti-V Filter ---
         raw_next_state = next_state
         risk_off_list = ["BEAR_CASH", "ZONE_BATTLE_DEFEND", "TOP_ESCAPE"]
         risk_on_list = ["ZONE_BATTLE_ATTACK", "NORMAL"]
         blocked = False
-        blocked_reasons = []
 
         if self.state_label in risk_off_list:
             if raw_next_state in risk_on_list:
                 if self.risk_off_days < self.min_risk_off_days:
                     blocked = True
-                    blocked_reasons.append(f"Cool-down not met: Waited {self.risk_off_days}/{self.min_risk_off_days} days.")
                 if not pd.isna(ma20) and not pd.isna(prev_ma20):
                     if ma20 <= prev_ma20:
                         blocked = True
-                        blocked_reasons.append("MA20 slope is flat or downward.")
                 else:
                     blocked = True
-                    blocked_reasons.append("Insufficient MA20 data.")
 
         if blocked:
             next_state = self.state_label
-            reason_text = "; ".join(blocked_reasons)
-            alert("【Reversal Filter Active】", f"Delaying switch to {raw_next_state}. Reasons: {reason_text}")
+            print("[FILTER] 反转过滤已拦截，保持当前状态")
 
+        # Update risk-off days
         if next_state in risk_off_list:
              self.risk_off_days += 1
         else:
              self.risk_off_days = 0
 
-        if next_state != self.state_label:
-            alert("【Signal Triggered】", f"State changed from {self.state_label} -> {next_state}")
-            self.state_label = next_state
-        else:
-            print(f"[STATUS] Maintaining state: {self.state_label}")
+        self.state_label = next_state
+
+        # Target Weights
+        tg_q = 0.0
+        tg_t = 0.0
+        if next_state == "ZONE_DESPAIR_TQQQ" or next_state == "ZONE_BATTLE_ATTACK":
+            tg_q = 0.0
+            tg_t = 0.99
+        elif next_state == "ZONE_BATTLE_DEFEND" or next_state == "TOP_ESCAPE":
+            tg_q = 0.90
+            tg_t = 0.0
+        elif next_state == "NORMAL":
+            tg_q = 0.45
+            tg_t = 0.45
+
+        # Dispatch the Daily Report via Telegram
+        self.send_daily_report(close_qqq, close_tqqq, tg_q, tg_t)
 
 if __name__ == "__main__":
     bot = QuantStrategy()
