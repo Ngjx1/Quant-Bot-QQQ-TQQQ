@@ -2,13 +2,20 @@ import yfinance as yf
 import pandas as pd
 import requests
 import datetime
+import os  # <-- We need this to read GitHub Secrets
 
 # --- Configuration ---
-TELEGRAM_BOT_TOKEN = "8845865365:AAFd76bQzxBJDKMgMlrKb44pmVRUBb99QlE"
-TELEGRAM_CHAT_ID = "8578262364"
+# Now it dynamically reads the secrets you saved in GitHub
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8845865365:AAFd76bQzxBJDKMgMlrKb44pmVRUBb99QlE")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8578262364")
 
 def alert(title, content):
     """Sends a Telegram notification."""
+    # Safety check: don't crash if secrets are missing
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print(f"[LOCAL ALERT] {title} - {content}")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     message = f"🚨 *{title}*\n\n{content}"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
