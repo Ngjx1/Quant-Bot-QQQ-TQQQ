@@ -18,7 +18,7 @@ class QuantStrategy:
         self.min_risk_off_days = 2
         
         # Reads dynamically from GitHub Variables
-        self.cash_balance = float(os.environ.get("CASH_BALANCE", "10000.0"))
+        self.cash_balance = float(os.environ.get("CASH_BALANCE", "3700.0"))
         self.qty_q = float(os.environ.get("HOLDING_QQQ", "0.0"))
         self.qty_t = float(os.environ.get("HOLDING_TQQQ", "0.0"))
 
