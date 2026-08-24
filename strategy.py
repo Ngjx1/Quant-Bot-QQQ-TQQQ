@@ -18,7 +18,7 @@ class QuantStrategy:
         self.min_risk_off_days = 2
         
         # Reads dynamically from GitHub Variables
-        self.equity = float(os.environ.get("ACCOUNT_EQUITY", "600.0"))
+        self.cash_balance = float(os.environ.get("CASH_BALANCE", "3700.0"))
         self.qty_q = float(os.environ.get("HOLDING_QQQ", "0.0"))
         self.qty_t = float(os.environ.get("HOLDING_TQQQ", "0.0"))
 
@@ -71,18 +71,19 @@ class QuantStrategy:
     def send_daily_report(self, close_q, close_t, tg_q, tg_t):
         val_q = float(self.qty_q) * close_q
         val_t = float(self.qty_t) * close_t
-        cash = max(0.0, self.equity - val_q - val_t)
+        cash = max(0.0, self.cash_balance)
+        equity = cash + val_q + val_t
         
-        curr_pct_q = (val_q / self.equity * 100) if self.equity > 0 else 0.0
-        curr_pct_t = (val_t / self.equity * 100) if self.equity > 0 else 0.0
-        curr_pct_cash = (cash / self.equity * 100) if self.equity > 0 else 0.0
+        curr_pct_q = (val_q / equity * 100) if equity > 0 else 0.0
+        curr_pct_t = (val_t / equity * 100) if equity > 0 else 0.0
+        curr_pct_cash = (cash / equity * 100) if equity > 0 else 0.0
         
         tg_pct_q = tg_q * 100
         tg_pct_t = tg_t * 100
         tg_pct_cash = max(0.0, (1.0 - tg_q - tg_t) * 100)
 
-        target_qty_q = round((self.equity * tg_q) / close_q, 4) if close_q > 0 else 0.0
-        target_qty_t = round((self.equity * tg_t) / close_t, 4) if close_t > 0 else 0.0
+        target_qty_q = round((equity * tg_q) / close_q, 4) if close_q > 0 else 0.0
+        target_qty_t = round((equity * tg_t) / close_t, 4) if close_t > 0 else 0.0
 
         status_icons = {
             "NORMAL": "🟢", "ZONE_BATTLE_ATTACK": "⚔️", "ZONE_BATTLE_DEFEND": "🛡️",
@@ -110,7 +111,7 @@ class QuantStrategy:
             f"{icon} 【每日巡检】\n"
             f"当前状态: {self.state_label}\n\n"
             f"⏰ 报告时间(北京): {now_str}\n"
-            f"💰 账户总资产: ${self.equity:.2f}\n"
+            f"💰 账户总资产: ${equity:.2f}\n"
             f"🏦 当前现金: ${cash:.2f} ({curr_pct_cash:.1f}% | 目标: {tg_pct_cash:.1f}%)\n"
             f"📈 QQQ: ${close_q:.2f} | TQQQ: ${close_t:.2f}\n\n"
             f"📊 资产占比 (当前 ➜ 目标):\n"
@@ -132,8 +133,9 @@ class QuantStrategy:
         except Exception as e:
             print(f"[REPORT CRASH] {e}")
 
-        # Return target shares so we can update GitHub memory
-        return target_qty_q, target_qty_t
+        # Return target shares and updated cash balance so we can update GitHub memory
+        new_cash = max(0.0, round(equity - (target_qty_q * close_q) - (target_qty_t * close_t), 2))
+        return target_qty_q, target_qty_t, new_cash
 
     def run(self):
         print("[INIT] V22.1 Engine Started")
@@ -234,14 +236,16 @@ class QuantStrategy:
             tg_q = 0.0
             tg_t = 0.0
 
-        # Send report AND capture the newly calculated target shares
-        target_qty_q, target_qty_t = self.send_daily_report(close_qqq, close_tqqq, tg_q, tg_t)
+        # Send report AND capture the newly calculated target shares and cash balance
+        target_qty_q, target_qty_t, new_cash = self.send_daily_report(close_qqq, close_tqqq, tg_q, tg_t)
         
         # Assuming you executed the trade perfectly, update GitHub's memory for tomorrow
         if target_qty_q != self.qty_q:
             self.update_github_variable("HOLDING_QQQ", target_qty_q)
         if target_qty_t != self.qty_t:
             self.update_github_variable("HOLDING_TQQQ", target_qty_t)
+        if new_cash != self.cash_balance:
+            self.update_github_variable("CASH_BALANCE", new_cash)
 
 if __name__ == "__main__":
     bot = QuantStrategy()
