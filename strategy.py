@@ -47,7 +47,9 @@ class QuantStrategy:
     def fetch_data(self, ticker):
         """Fetches historical daily data using yfinance."""
         print(f"[DATA] Fetching data for {ticker}...")
-        data = yf.download(ticker, period="2y", interval="1d", progress=False)
+        # Use yf.Ticker().history() instead of yf.download() to prevent MultiIndex data structure errors
+        ticker_obj = yf.Ticker(ticker)
+        data = ticker_obj.history(period="2y", interval="1d")
         return data
 
     def calculate_indicators(self, data):
@@ -59,7 +61,8 @@ class QuantStrategy:
 
     def _init_ath_price(self, data):
         recent_year = data.tail(252)
-        self.ath_price = recent_year['High'].max()
+        # Force the maximum value to be a standard Python float (decimal)
+        self.ath_price = float(recent_year['High'].max())
         print(f"[INIT] ATH initialized: {self.ath_price:.2f}")
 
     def run(self):
@@ -92,7 +95,7 @@ class QuantStrategy:
             self._init_ath_price(df_qqq)
 
         if close_qqq > self.ath_price:
-            self.ath_price = close_qqq
+            self.ath_price = float(close_qqq)
 
         drawdown = (close_qqq / self.ath_price) - 1.0 if self.ath_price > 0 else 0.0
 
