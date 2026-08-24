@@ -2,19 +2,18 @@ name: Quant-Bot-QQQ-TQQQ
 
 on:
   schedule:
-    # Runs at 16:15 UTC (12:15 AM Malaysia Time) Monday-Friday
     - cron: '15 16 * * 1-5'
-  workflow_dispatch: # Allows you to click a button to run it manually
+  workflow_dispatch: 
 
 jobs:
   run-strategy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # <-- Updated to v4
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # <-- Updated to v5
         with:
           python-version: '3.10'
           
