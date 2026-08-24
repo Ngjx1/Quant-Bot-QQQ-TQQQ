@@ -2,18 +2,19 @@ name: Quant-Bot-QQQ-TQQQ
 
 on:
   schedule:
+    # Runs at 16:15 UTC (12:15 AM Malaysia/Beijing Time) Monday-Friday
     - cron: '15 16 * * 1-5'
-  workflow_dispatch: 
+  workflow_dispatch: # Allows you to click a button to run it manually
 
 jobs:
   run-strategy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4  # <-- Updated to v4
+        uses: actions/checkout@v4
       
       - name: Set up Python
-        uses: actions/setup-python@v5  # <-- Updated to v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           
@@ -23,5 +24,6 @@ jobs:
       - name: Execute Strategy
         run: python strategy.py
         env:
+          # Optional: It will use these if they exist, otherwise defaults to the hardcoded ones in the script
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
