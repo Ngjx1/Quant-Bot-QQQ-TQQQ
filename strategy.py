@@ -49,18 +49,27 @@ class QuantStrategy:
         print(f"[INIT] ATH initialized: {self.ath_price:.2f}")
 
     def send_daily_report(self, close_q, close_t, tg_q, tg_t):
-        """Generates and sends the exact HandsomeBoybot report"""
+        """Generates and sends the daily inspection report with percentage breakdowns."""
         
-        # 1. Asset & Cash Calculation
+        # 1. 资产与现金计算 (Asset & Cash Breakdown)
         val_q = float(self.qty_q) * close_q
         val_t = float(self.qty_t) * close_t
-        cash = self.equity - val_q - val_t
+        cash = max(0.0, self.equity - val_q - val_t)
         
-        # 2. 计算目标持仓股数 (Calculate target shares with 4 decimal places)
+        # 2. 百分比计算 (Current vs Target Percentages)
+        curr_pct_q = (val_q / self.equity * 100) if self.equity > 0 else 0.0
+        curr_pct_t = (val_t / self.equity * 100) if self.equity > 0 else 0.0
+        curr_pct_cash = (cash / self.equity * 100) if self.equity > 0 else 0.0
+        
+        tg_pct_q = tg_q * 100
+        tg_pct_t = tg_t * 100
+        tg_pct_cash = max(0.0, (1.0 - tg_q - tg_t) * 100)
+
+        # 3. 目标股数计算 (Target Shares)
         target_qty_q = round((self.equity * tg_q) / close_q, 4) if close_q > 0 else 0.0
         target_qty_t = round((self.equity * tg_t) / close_t, 4) if close_t > 0 else 0.0
 
-        # 3. 匹配当前状态的 Emoji 图标 (Match status with Emoji)
+        # 4. 状态 Emoji
         status_icons = {
             "NORMAL": "🟢",
             "ZONE_BATTLE_ATTACK": "⚔️",
@@ -72,42 +81,47 @@ class QuantStrategy:
         }
         icon = status_icons.get(self.state_label, "🔹")
 
-        # 4. 生成操作建议文本 (Generate action suggestions handling decimals)
-        def get_action_str(current, target):
+        # 5. 操作建议文本生成 (Action String with % and Units)
+        def get_action_str(current, target, tg_pct):
             diff = round(target - current, 4)
+            pct_str = f"{tg_pct:.1f}%"
             if diff > 0:
-                return f"🟢 买入 {diff} 股 (目标: {target}股)"
+                return f"🟢 买入 {diff} 股 (目标: {pct_str} | {target}股)"
             elif diff < 0:
-                return f"🔴 卖出 {abs(diff)} 股 (目标: {target}股)"
+                return f"🔴 卖出 {abs(diff)} 股 (目标: {pct_str} | {target}股)"
             else:
-                return f"⚪️ 维持持仓 (目标: {target}股)"
+                return f"⚪️ 维持持仓 (目标: {pct_str} | {target}股)"
 
-        action_q = get_action_str(self.qty_q, target_qty_q)
-        action_t = get_action_str(self.qty_t, target_qty_t)
+        action_q = get_action_str(self.qty_q, target_qty_q, tg_pct_q)
+        action_t = get_action_str(self.qty_t, target_qty_t, tg_pct_t)
 
-        # 5. Beijing Time Formatting (UTC+8)
+        # 6. 北京时间格式化 (UTC+8)
         tz = datetime.timezone(datetime.timedelta(hours=8))
         now_str = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
 
-        # 6. Final Message Assembly
+        # 7. 组装完整消息
         msg = (
             f"{icon} 【每日巡检】\n"
             f"当前状态: {self.state_label}\n\n"
             f"⏰ 报告时间(北京): {now_str}\n"
-            f"💰 账户总资产: ${round(self.equity, 2)}\n"
-            f"🏦 当前现金: ${round(cash, 2)}\n"
-            f"📈 QQQ: ${round(close_q, 2)} | TQQQ: ${round(close_t, 2)}\n\n"
+            f"💰 账户总资产: ${self.equity:.2f}\n"
+            f"🏦 当前现金: ${cash:.2f} ({curr_pct_cash:.1f}% | 目标: {tg_pct_cash:.1f}%)\n"
+            f"📈 QQQ: ${close_q:.2f} | TQQQ: ${close_t:.2f}\n\n"
+            f"📊 资产占比 (当前 ➜ 目标):\n"
+            f"  • QQQ: ${val_q:.2f} ({curr_pct_q:.1f}% ➜ {tg_pct_q:.1f}%)\n"
+            f"  • TQQQ: ${val_t:.2f} ({curr_pct_t:.1f}% ➜ {tg_pct_t:.1f}%)\n"
+            f"  • 现金: ${cash:.2f} ({curr_pct_cash:.1f}% ➜ {tg_pct_cash:.1f}%)\n\n"
             f"🎯 操作建议:\n"
             f"  • QQQ: {action_q}\n"
             f"  • TQQQ: {action_t}"
         )
 
-        # 7. Send to Telegram
+        # 8. 发送至 Telegram
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         try:
             res = requests.post(url, json={"chat_id": self.chat_id, "text": msg})
             if res.status_code == 200:
-                print("[REPORT SENT] 每日巡检已成功发送到 Telegram!")
+                print("[REPORT SENT] 巡检报告已成功发送至 Telegram!")
             else:
                 print(f"[REPORT FAILED] Telegram 拒绝发送: {res.text}")
         except Exception as e:
